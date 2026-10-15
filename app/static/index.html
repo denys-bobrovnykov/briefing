@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FlightBrief</title>
+<style>
+:root{--bg:#0f1720;--panel:#17212c;--line:#263444;--tx:#e6edf3;--mut:#8b9bab;--acc:#4aa3ff;--crit:#ff5d5d;--sig:#f5a623;--info:#5fb88a}
+@media (prefers-color-scheme: light){:root{--bg:#f4f6f8;--panel:#fff;--line:#d9e0e7;--tx:#14202b;--mut:#5c6b7a;--acc:#0b6bcb;--crit:#c62828;--sig:#b26a00;--info:#2e7d57}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.5 system-ui,sans-serif}
+header{padding:14px 20px;border-bottom:1px solid var(--line);display:flex;gap:12px;align-items:baseline}
+header h1{font-size:18px;margin:0}header span{color:var(--mut);font-size:13px}
+main{display:grid;grid-template-columns:340px 1fr;gap:16px;padding:16px;max-width:1300px;margin:auto}
+@media(max-width:900px){main{grid-template-columns:1fr}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:16px}
+.card h2{font-size:14px;margin:0 0 10px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut)}
+button{background:var(--acc);color:#fff;border:0;border-radius:8px;padding:9px 14px;font:inherit;cursor:pointer}
+button:disabled{opacity:.5;cursor:wait}
+textarea,input[type=text]{width:100%;background:var(--bg);color:var(--tx);border:1px solid var(--line);border-radius:8px;padding:8px;font:inherit}
+.drop{border:1px dashed var(--line);border-radius:8px;padding:14px;text-align:center;color:var(--mut);cursor:pointer}
+.file{font-size:13px;color:var(--mut);margin-top:6px}
+.f{border-left:4px solid var(--info);padding:8px 12px;margin:8px 0;background:var(--bg);border-radius:0 8px 8px 0}
+.f.CRITICAL{border-color:var(--crit)}.f.SIGNIFICANT{border-color:var(--sig)}
+.tag{font-size:11px;font-weight:700;padding:1px 7px;border-radius:99px;color:#fff;background:var(--info)}
+.tag.CRITICAL{background:var(--crit)}.tag.SIGNIFICANT{background:var(--sig)}
+.f small{color:var(--mut)}.phase{margin:16px 0 4px;font-weight:600;color:var(--acc)}
+table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:5px 8px;border-bottom:1px solid var(--line);text-align:left}
+th{color:var(--mut);font-weight:500}
+#chatlog{max-height:320px;overflow:auto;margin-bottom:8px}
+.msg{margin:6px 0;white-space:pre-wrap}.msg b{color:var(--acc)}
+.risk{font-size:20px;font-weight:700}
+.warn{font-size:12px;color:var(--mut)}
+</style>
+</head>
+<body>
+<header><h1>FlightBrief</h1><span>NOTAM &amp; weather analysis for long-haul flights</span></header>
+<main>
+<aside>
+  <div class="card">
+    <h2>1 · Inputs</h2>
+    <label class="drop" for="files">Drop or choose PDFs (NOTAMs, weather, OFP) and/or OFP .json</label>
+    <input id="files" type="file" multiple accept=".pdf,.json" hidden>
+    <div id="filelist"></div>
+  </div>
+  <div class="card">
+    <h2>2 · Dispatcher notes</h2>
+    <textarea id="notes" rows="3" placeholder="e.g. Focus on ETOPS alternates; MEL: one pack inop"></textarea>
+    <p><button id="go">Analyse</button></p>
+    <div id="status" class="warn"></div>
+  </div>
+  <p class="warn">Decision support only. Verify against official sources; the commander and dispatcher remain responsible.</p>
+</aside>
+<section>
+  <div id="out" class="card"><h2>Briefing</h2><div class="warn">Upload files and press Analyse.</div></div>
+  <div id="hi" class="card" hidden><h2>Segments above FL100 · ISA deviation &amp; terrain</h2><div id="hibody"></div></div>
+  <div id="chatcard" class="card" hidden>
+    <h2>Ask about this flight</h2>
+    <div id="chatlog"></div>
+    <input type="text" id="q" placeholder="e.g. Which NOTAMs affect the alternate at ETA?">
+  </div>
+</section>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+let sid=null;
+async function api(path,opts){const r=await fetch(path,opts);const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.detail||r.statusText);return j}
+async function ensureSession(){if(!sid)sid=(await api("/api/session",{method:"POST"})).sid;return sid}
+
+$("files").onchange=async e=>{
+  const fs=[...e.target.files];if(!fs.length)return;
+  $("status").textContent="Uploading…";
+  try{
+    const fd=new FormData();fd.append("sid",await ensureSession());fs.forEach(f=>fd.append("files",f));
+    const r=await api("/api/upload",{method:"POST",body:fd});
+    $("filelist").innerHTML+=r.uploaded.map(u=>`<div class="file">✓ ${esc(u.name)} — ${u.kind==="pdf"?u.pages+" pages"+(u.scanned?" (scanned → vision)":""):u.points+" OFP points"}</div>`).join("");
+    $("status").textContent="";
+  }catch(err){$("status").textContent="Upload failed: "+err.message}
+};
+
+$("go").onclick=async()=>{
+  $("go").disabled=true;$("status").textContent="Agent working… this can take a few minutes.";
+  try{
+    const r=await api("/api/analyze",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sid:await ensureSession(),notes:$("notes").value})});
+    render(r);$("status").textContent="";$("chatcard").hidden=false;
+  }catch(err){$("status").textContent="Failed: "+err.message}
+  $("go").disabled=false;
+};
+
+function render({briefing:b,segments}){
+  let h=`<h2>Briefing</h2><div class="risk">Overall risk: ${esc(b.overall_risk)}</div><p>${esc(b.summary)}</p>`;
+  const groups={};b.findings.forEach(f=>{(groups[f.order+"|"+f.phase+" · "+f.location]??=[]).push(f)});
+  Object.keys(groups).sort((a,c)=>parseInt(a)-parseInt(c)).forEach(k=>{
+    h+=`<div class="phase">${esc(k.split("|")[1])}</div>`;
+    groups[k].forEach(f=>{h+=`<div class="f ${esc(f.severity)}"><span class="tag ${esc(f.severity)}">${esc(f.severity)}</span> <b>${esc(f.title)}</b> <small>[${esc(f.source)}]</small><div>${esc(f.detail)}</div>
+      ${f.validity?`<small>Valid: ${esc(f.validity)}</small><br>`:""}${f.relevance_window?`<small>Relevant window: ${esc(f.relevance_window)}</small><br>`:""}
+      ${f.recommended_action?`<small>Action: ${esc(f.recommended_action)}</small>`:""}</div>`});
+  });
+  if(b.data_gaps?.length)h+=`<div class="phase">Data gaps</div><ul>${b.data_gaps.map(g=>`<li>${esc(g)}</li>`).join("")}</ul>`;
+  $("out").innerHTML=h;
+
+  if(segments?.length){
+    let t=`<p>${esc(b.high_altitude_notes)}</p>`;
+    segments.forEach(s=>{
+      t+=`<div class="phase">Segment ${s.segment}: ${esc(s.from)} → ${esc(s.to)} · FL${s.min_fl}–FL${s.max_fl}</div>
+      <table><tr><th>Point</th><th>ETO</th><th>FL</th><th>OAT</th><th>ISA dev</th><th>Terrain ft</th><th>Temp @ terrain</th><th>Alt. error</th><th>Clearance</th></tr>`+
+      s.points.map(p=>`<tr><td>${esc(p.name)}</td><td>${esc((p.eto||"").slice(11,16))}</td><td>${p.fl??""}</td><td>${p.oat_c??""}</td><td>${p.isa_dev_c==null?"":(p.isa_dev_c>0?"+":"")+p.isa_dev_c}</td><td>${p.terrain_ft??"n/a"}</td><td>${p.terrain_temp_c??""}</td><td>${p.true_alt_error_ft??""}</td><td>${p.clearance_after_error_ft??""}</td></tr>`).join("")+`</table>`;
+    });
+    $("hibody").innerHTML=t;$("hi").hidden=false;
+  }
+}
+
+$("q").onkeydown=async e=>{
+  if(e.key!=="Enter"||!e.target.value.trim())return;
+  const q=e.target.value;e.target.value="";
+  const log=$("chatlog");log.insertAdjacentHTML("beforeend",`<div class="msg"><b>You:</b> ${esc(q)}</div>`);
+  const holder=document.createElement("div");holder.className="msg";holder.textContent="…";log.append(holder);
+  try{const r=await api("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sid,message:q})});
+    holder.innerHTML="<b>Claude:</b> "+esc(r.reply)}catch(err){holder.textContent="Error: "+err.message}
+  log.scrollTop=log.scrollHeight;
+};
+</script>
+</body>
+</html>

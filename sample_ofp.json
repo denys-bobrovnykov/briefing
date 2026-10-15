@@ -1,0 +1,20 @@
+{
+  "flight": {
+    "callsign": "DEMO123",
+    "dep": "VTBS",
+    "dest": "EGLL",
+    "alternates": ["EGKK"],
+    "enroute_alternates": ["OMDB", "LTFM"],
+    "etd": "2026-10-09T00:30:00Z",
+    "eta": "2026-10-09T12:40:00Z"
+  },
+  "waypoints": [
+    {"name": "VTBS", "lat": 13.69, "lon": 100.75, "fl": 0, "eto": "2026-10-09T00:30:00Z", "oat_c": 28, "wind": "180/10"},
+    {"name": "TOC", "lat": 16.0, "lon": 98.0, "fl": 350, "eto": "2026-10-09T01:10:00Z", "oat_c": -54, "wind": "270/60"},
+    {"name": "VANBO", "lat": 22.5, "lon": 92.0, "fl": 350, "eto": "2026-10-09T02:30:00Z", "oat_c": -56, "wind": "280/70"},
+    {"name": "BUBAN", "lat": 28.0, "lon": 84.5, "fl": 370, "eto": "2026-10-09T04:00:00Z", "oat_c": -62, "wind": "290/90"},
+    {"name": "ASVIN", "lat": 33.0, "lon": 70.0, "fl": 370, "eto": "2026-10-09T06:00:00Z", "oat_c": -58, "wind": "280/85"},
+    {"name": "TOD", "lat": 48.0, "lon": 5.0, "fl": 370, "eto": "2026-10-09T11:50:00Z", "oat_c": -52, "wind": "260/60"},
+    {"name": "EGLL", "lat": 51.47, "lon": -0.46, "fl": 0, "eto": "2026-10-09T12:40:00Z", "oat_c": 11, "wind": "240/12"}
+  ]
+}
